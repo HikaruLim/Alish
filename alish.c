@@ -1,5 +1,3 @@
-//myshell.c 主程序
-//
 #include <stdio.h>
 #include <string.h>
 #include <limits.h>
