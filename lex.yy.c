@@ -453,7 +453,7 @@ char *yytext;
 #include <string.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-
+#include <pwd.h>
 //input related
 extern char* g_ptr;
 extern char* g_lim;
@@ -461,9 +461,14 @@ extern char* g_lim;
 #undef YY_INPUT
 #define YY_INPUT(b,r,ms)(r=my_yyinput(b,ms))
 static int my_yyinput(char* buf,int max);
+static int special_command();
+enum cmds{xxx,cd}cmd;
+extern struct passwd* user_info;
+static void enum_cmd();
 
 //cmd-arguments related
 #define MAX_ARG_CNT 256
+
 static char* g_argv[MAX_ARG_CNT];
 static int g_argc=0;
 
@@ -472,7 +477,7 @@ static void reset_args();
 
 //cmd-handlers
 static void exec_simple_cmd();
-#line 476 "lex.yy.c"
+#line 481 "lex.yy.c"
 
 #define INITIAL 0
 
@@ -654,9 +659,9 @@ YY_DECL
 	register char *yy_cp, *yy_bp;
 	register int yy_act;
     
-#line 34 "parse.lex"
+#line 39 "parse.lex"
 
-#line 660 "lex.yy.c"
+#line 665 "lex.yy.c"
 
 	if ( !(yy_init) )
 		{
@@ -741,26 +746,26 @@ do_action:	/* This label is used only to access EOF actions. */
 
 case 1:
 YY_RULE_SETUP
-#line 35 "parse.lex"
+#line 40 "parse.lex"
 {add_arg(yytext);}
 	YY_BREAK
 case 2:
 /* rule 2 can match eol */
 YY_RULE_SETUP
-#line 36 "parse.lex"
+#line 41 "parse.lex"
 {exec_simple_cmd();reset_args();}
 	YY_BREAK
 case 3:
 YY_RULE_SETUP
-#line 37 "parse.lex"
+#line 42 "parse.lex"
 ;
 	YY_BREAK
 case 4:
 YY_RULE_SETUP
-#line 38 "parse.lex"
+#line 43 "parse.lex"
 ECHO;
 	YY_BREAK
-#line 764 "lex.yy.c"
+#line 769 "lex.yy.c"
 case YY_STATE_EOF(INITIAL):
 	yyterminate();
 
@@ -1758,13 +1763,85 @@ void yyfree (void * ptr )
 
 #define YYTABLES_NAME "yytables"
 
-#line 38 "parse.lex"
+#line 43 "parse.lex"
 
 
 
 
 
+static void
+enum_cmd()
+{
+    if(strcmp(g_argv[0],"cd")==0)
+	cmd=cd;
+}
 
+static int
+special_command()
+{
+    enum_cmd();
+    switch(cmd)
+    { 
+	case 1:    //1=>cd
+	{
+       	   // printf("cd OK!\n\n");
+            char* cd_path = NULL;
+            //"cd" == "cd ~"
+            if(g_argv[1]==NULL)
+            {
+		char* t;
+		char* arg;
+		if((arg=malloc(strlen("~")+1))==NULL)
+		{
+		    perror("Failed to allocate memory");
+		    return 1;
+		}
+		strcpy(arg,"~");
+		if((t=malloc(strlen(arg)+1))==NULL)
+    		{
+       	            perror("Failed to allocate memory");
+        	    return 1;
+    		}
+    		strcpy(t,arg);
+   		g_argv[1]=t;
+    		g_argc++;
+    		g_argv[g_argc]=0;
+            }
+
+            if(strcmp(g_argv[1],"~")==0)
+            {
+                if((cd_path = malloc(strlen(user_info->pw_dir)+1))==NULL)
+                {
+       	            perror("Failed to allocate memory");
+                    return 1;
+		}
+                strcpy(cd_path,user_info->pw_dir);
+            }
+            else
+            {
+                if((cd_path = malloc(strlen(g_argv[1])+1))==NULL)
+                {
+		    perror("Failed to allocate memory");
+		    return 1;
+                }
+                strcpy(cd_path,g_argv[1]);
+            }
+
+            if(chdir(cd_path))
+                printf("alish: cd: %s:%s\n",cd_path,strerror(errno));
+            free(cd_path);
+	 }
+	
+	 cmd=xxx;
+	 return 1;
+//	 break;
+
+	 case 0:
+	    return 0;
+	    //break;
+    }
+    //return 1;
+}
 
 static void
 add_arg(const char* arg)
@@ -1797,23 +1874,33 @@ reset_args()
 static void
 exec_simple_cmd()
 {
-    pid_t childpid;
-    int status;
-    if((childpid=fork())==-1)
+    //special command.--test
+/*    if(strcmp(g_argv[0],"cd")==0)
     {
-	perror("Failed to fork child");
-	return;
+        printf("\n\ncommand cd is used\n\n");
+        exit(1);
     }
+*/
+
+    //special command
+    if(special_command()==0)  //return 1 means special_command() work OK.
+    {
+        pid_t childpid;
+        int status;
+        if((childpid=fork())==-1)
+        {
+	    perror("Failed to fork child");
+	    return;
+        }  
     
-    if(childpid==0)
-    {
-//	printf("hehe\n");
-	execvp(g_argv[0],g_argv);
-	perror("Failed to execute command");
-	exit(1);
-    }
-//    printf("wowowowowowowowo\n");
-    waitpid(childpid,&status,0);
+        if(childpid==0)
+        {
+	    execvp(g_argv[0],g_argv);
+	    perror("Failed to execute command");
+	    exit(1);
+        }
+        waitpid(childpid,&status,0);
+}
 }
 
 static int
